@@ -1,5 +1,3 @@
-# psy120l-final-report
-Music and Memory Final Project
 Music and Memory: What Do We Remember When We Feel?
 PSY 120L Reproducible Analysis Report
 
@@ -9,13 +7,11 @@ Sarahi Sandoval
 Published
 June 6, 2026
 
-About This Report
-This reproducible report documents the data preparation, variable construction, descriptive statistics, primary analyses, and figures for this study.
+Concerning This Report The data preparation, variable production, descriptive statistics, principal analysis, and figures for this study are all documented in this reliable report.
 
-The report is intended to accompany a manuscript-style research paper. It is not the full paper itself. Instead, it shows how the reported analyses were produced from the data using a transparent and reproducible Quarto workflow.
+The report is meant to go with a research paper in the form of a paper. It is not the entire document. Rather, it demonstrates how a clear and repeatable Quarto technique was used to generate the provided findings from the data.
 
-Study Overview
-This study examines whether emotional affect and mood-congruent word recall differed by mood condition, emotional affect, and their interaction.
+Study Overview: This study looks at how mood condition, emotional affect, and their interplay effect emotional affect and mood-congruent word memory.
 
 The design included one manipulated independent variable and one measured moderator:
 
@@ -37,6 +33,11 @@ This portion of the report loads the packages used in this study for the purpose
 Load Packages
 
 Show code
+library(tidyverse)  # data manipulation + plotting
+library(psych)      # scale construction + reliability
+library(afex)       # ANOVA models + effect sizes
+library(emmeans)    # estimated marginal means + confidence intervals
+
 Data Source and Analysis Dataset
 Data was collected through an online survey completed on Qualtrics. The imported dataset was saved as study_raw as to preserve the unchanged original file throughout the report.
 
@@ -44,10 +45,16 @@ A smaller analysis dataset was then created for the current analyses called stud
 
 Import Dataset
 Show code
+study_raw <- read_csv("data/music_and_memory_data.csv")
+
 Check Imported Dataset
 Show code
+dim(study_raw)
+
 [1] 107 182
 Show code
+names(study_raw)
+
   [1] "StartDate"             "EndDate"               "Status"               
   [4] "IPAddress"             "Progress"              "Duration (in seconds)"
   [7] "Finished"              "RecordedDate"          "ResponseId"           
@@ -110,6 +117,8 @@ Show code
 [178] "panas_20"              "age"                   "gender"               
 [181] "injury"                "music_cond"           
 Show code
+head(study_raw)
+
 # A tibble: 6 × 182
   StartDate    EndDate Status IPAddress Progress Duration (in seconds…¹ Finished
   <chr>        <chr>    <dbl> <chr>        <dbl>                  <dbl>    <dbl>
@@ -130,12 +139,44 @@ The import checks confirms the successful loading of the dataset, the number of 
 
 Create Analysis Dataset
 Show code
+study_vars <- c(
+  "music_cond", "m_check", "age", "gender", "injury",
+
+"panas_1", "panas_2", "panas_3", "panas_4", "panas_5", "panas_6", "panas_7", "panas_8", "panas_9", "panas_10", "panas_11", "panas_12", "panas_13", "panas_14", "panas_15", "panas_16", "panas_17", "panas_18", "panas_19", "panas_20",
+
+"confidence_1", "confidence_2", "confidence_3",
+
+"recall_1", "recall_2", "recall_3",
+
+"recognition_1", "recognition_2", "recognition_3", "recognition_4", "recognition_5", "recognition_6", "recognition_7", "recognition_8", "recognition_9", "recognition_10", "recognition_11", "recognition_12",
+
+"recognition_conf_1", "recognition_conf_2", "recognition_conf_3", "recognition_conf_4", "recognition_conf_5", "recognition_conf_6", "recognition_conf_7", "recognition_conf_8", "recognition_conf_9", "recognition_conf_10", "recognition_conf_11", "recognition_conf_12"
+
+)
+
+
+
+study_data <- study_raw %>%
+  select(all_of(study_vars)) %>%
+  mutate(
+    across(
+      -c(recall_1, recall_2, recall_3),
+      as.numeric
+    )
+  )
+
 Check Analysis Dataset
 Show code
+length(study_vars)
+
 [1] 55
 Show code
+dim(study_data)
+
 [1] 107  55
 Show code
+names(study_data)
+
  [1] "music_cond"          "m_check"             "age"                
  [4] "gender"              "injury"              "panas_1"            
  [7] "panas_2"             "panas_3"             "panas_4"            
@@ -164,10 +205,74 @@ Count Correct Answers
 The free recall responses were open-ended text responses and thus needed to be scored before they could be used as a numeric dependent variable. Each recall response was compared against the target words shown in that block. The code below creates one score for each recall block and then sums those block scores into a total free_recall score, with higher scores indicate that participants correctly recalled more words.
 
 Show code
+block_1_words <- c(
+  "house", "neglect", "couple", "lantern", "despise", "teacher"
+)
+
+block_2_words <- c(
+  "coast", "disloyal", "acceptance", "social", "cyclone", "street", "cheer"
+)
+
+block_3_words <- c(
+  "highway", "grief", "death", "wounds", "desire", "friendly", "strong"
+)
+
+score_recall <- function(response, answer_key) {
+  
+  if (is.na(response)) {
+    return(NA_real_)
+  }
+  
+  response_clean <- str_to_lower(response)
+  
+  recalled_words <- str_extract_all(response_clean, "\\b[a-z]+\\b")[[1]]
+  
+  sum(answer_key %in% recalled_words)
+}
+
+study_data <- study_data %>%
+  rowwise() %>%
+  mutate(
+    recall_1_score = score_recall(recall_1, block_1_words),
+    recall_2_score = score_recall(recall_2, block_2_words),
+    recall_3_score = score_recall(recall_3, block_3_words),
+    free_recall = sum(c(recall_1_score, recall_2_score, recall_3_score), na.rm = TRUE)
+  ) %>%
+  ungroup()
+
 Check Free Recall Scores
 The next chunk checks whether the scoring worked correctly. The block-level recall scores should stay within the possible range for each word list. Because Block 1 had 6 confirmed target words, recall_1_score should range from 0 to 6. Blocks 2 and 3 each had 7 target words, so recall_2_score and recall_3_score should each range from 0 to 7. The total free_recall score should range from 0 to 20.
 
 Show code
+study_data %>%
+  summarise(
+    recall_1_score_min = min(recall_1_score, na.rm = TRUE),
+    recall_1_score_max = max(recall_1_score, na.rm = TRUE),
+    recall_1_score_mean = mean(recall_1_score, na.rm = TRUE),
+    recall_1_score_sd = sd(recall_1_score, na.rm = TRUE),
+    
+    recall_2_score_min = min(recall_2_score, na.rm = TRUE),
+    recall_2_score_max = max(recall_2_score, na.rm = TRUE),
+    recall_2_score_mean = mean(recall_2_score, na.rm = TRUE),
+    recall_2_score_sd = sd(recall_2_score, na.rm = TRUE),
+    
+    recall_3_score_min = min(recall_3_score, na.rm = TRUE),
+    recall_3_score_max = max(recall_3_score, na.rm = TRUE),
+    recall_3_score_mean = mean(recall_3_score, na.rm = TRUE),
+    recall_3_score_sd = sd(recall_3_score, na.rm = TRUE),
+    
+    free_recall_min = min(free_recall, na.rm = TRUE),
+    free_recall_max = max(free_recall, na.rm = TRUE),
+    free_recall_mean = mean(free_recall, na.rm = TRUE),
+    free_recall_sd = sd(free_recall, na.rm = TRUE)
+  ) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = c("variable", ".value"),
+    names_pattern = "(.+)_(min|max|mean|sd)"
+  ) %>%
+  knitr::kable()
+
 variable	min	max	mean	sd
 recall_1_score	2	6	4.292453	1.178918
 recall_2_score	1	7	3.733333	1.288012
@@ -175,10 +280,26 @@ recall_3_score	1	7	4.476191	1.301591
 free_recall	0	18	12.308411	3.133541
 Prepare Participant ID and Experimental Condition
 Show code
+study_data <- study_data %>%
+  mutate(
+    id = row_number(),
+    music_cond = factor(
+      music_cond,
+      levels = c(0, 1),
+      labels = c("Negative Condition", "Positive Condition")
+    )
+  )
+
 The experimental condition variable was recorded as a labeled factor with two levels: negative and positive. Alongside it, a participant ID variable was created so each row was linked to a unique identifier.
 
 Check Experimental Condition Coding
 Show code
+study_data %>%
+  count(music_cond) %>%
+  knitr::kable(
+    col.names = c("Condition", "n")
+  )
+
 Condition	n
 Negative Condition	46
 Positive Condition	60
@@ -187,8 +308,12 @@ The condition check confirms the number of participants assigned to each conditi
 
 Check Prepared Analysis Dataset
 Show code
+dim(study_data)
+
 [1] 107  60
 Show code
+names(study_data)
+
  [1] "music_cond"          "m_check"             "age"                
  [4] "gender"              "injury"              "panas_1"            
  [7] "panas_2"             "panas_3"             "panas_4"            
@@ -221,8 +346,86 @@ Memory confidence scores were computed as the average of three confidence items.
 Recognition confidence scores were computed as the average of the 12 recognition confidence items.
 
 Show code
+# PANAS emotional state/intensity items
+panas_items <- c(
+  "panas_1", "panas_2", "panas_3", "panas_4", "panas_5",
+  "panas_6", "panas_7", "panas_8", "panas_9", "panas_10",
+  "panas_11", "panas_12", "panas_13", "panas_14", "panas_15",
+  "panas_16", "panas_17", "panas_18", "panas_19", "panas_20"
+)
+
+# Memory confidence items
+confidence_items <- c(
+  "confidence_1",
+  "confidence_2",
+  "confidence_3"
+)
+
+# Recognition accuracy items
+recognition_items <- c(
+  "recognition_1", "recognition_2", "recognition_3", "recognition_4",
+  "recognition_5", "recognition_6", "recognition_7", "recognition_8",
+  "recognition_9", "recognition_10", "recognition_11", "recognition_12"
+)
+
+# Recognition confidence items
+recognition_conf_items <- c(
+  "recognition_conf_1", "recognition_conf_2", "recognition_conf_3",
+  "recognition_conf_4", "recognition_conf_5", "recognition_conf_6",
+  "recognition_conf_7", "recognition_conf_8", "recognition_conf_9",
+  "recognition_conf_10", "recognition_conf_11", "recognition_conf_12"
+)
+
+# Correct recognition answers
+# 1 = Yes
+# 2 = No
+recognition_key <- c(
+  recognition_1 = 2,
+  recognition_2 = 1,
+  recognition_3 = 1,
+  recognition_4 = 2,
+  recognition_5 = 1,
+  recognition_6 = 1,
+  recognition_7 = 1,
+  recognition_8 = 1,
+  recognition_9 = 1,
+  recognition_10 = 1,
+  recognition_11 = 2,
+  recognition_12 = 1
+)
+
+# Recognition score variable names
+recognition_score_items <- paste0(recognition_items, "_score")
+
+study_data <- study_data %>%
+  mutate(
+    emotional_state_intensity = rowMeans(across(all_of(panas_items)), na.rm = TRUE),
+    memory_confidence = rowMeans(across(all_of(confidence_items)), na.rm = TRUE),
+    recognition_confidence = rowMeans(across(all_of(recognition_conf_items)), na.rm = TRUE)
+  ) %>%
+  mutate(
+    across(
+      all_of(recognition_items),
+      ~ if_else(.x == recognition_key[cur_column()], 1, 0),
+      .names = "{.col}_score"
+    )
+  ) %>%
+  mutate(
+    recognition_accuracy = rowMeans(across(all_of(recognition_score_items)), na.rm = TRUE)
+  )
+
 Check Scale Scores
 Show code
+study_data %>%
+  select(
+    emotional_state_intensity,
+    memory_confidence,
+    recognition_accuracy,
+    recognition_confidence,
+    free_recall
+  ) %>%
+  summary()
+
  emotional_state_intensity memory_confidence recognition_accuracy
  Min.   :1.050             Min.   : 22.00    Min.   :0.00000     
  1st Qu.:1.600             1st Qu.: 50.67    1st Qu.:0.00000     
@@ -240,6 +443,16 @@ Show code
  Max.   :2.000          Max.   :18.00  
  NAs    :2                             
 Show code
+study_data %>%
+  summarise(
+    emotional_state_intensity_missing = mean(is.na(emotional_state_intensity)),
+    memory_confidence_missing = mean(is.na(memory_confidence)),
+    recognition_accuracy_missing = mean(is.na(recognition_accuracy)),
+    recognition_confidence_missing = mean(is.na(recognition_confidence)),
+    free_recall_missing = mean(is.na(free_recall))
+  ) %>%
+  knitr::kable()
+
 emotional_state_intensity_missing	memory_confidence_missing	recognition_accuracy_missing	recognition_confidence_missing	free_recall_missing
 0.0186916	0.0186916	0.0186916	0.0186916	0
 The scale-score checks confirm that computed scale scores are within the expected response range and show missing scale scores as well.
@@ -248,8 +461,32 @@ Create Emotional Intensity Groups
 A low/high emotional intensity grouping variable was created for the planned 2x2 ANOVA models. Participants with emotional intensity scores at or below the sample median were assigned to the Low group whilst participants above the sample median were assigned to the High group.
 
 Show code
+emotional_state_median <- median(
+  study_data$emotional_state_intensity,
+  na.rm = TRUE
+)
+
+study_data <- study_data %>%
+  mutate(
+    emotional_state_group = if_else(
+      emotional_state_intensity <= emotional_state_median,
+      "Low",
+      "High"
+    ),
+    emotional_state_group = factor(
+      emotional_state_group,
+      levels = c("Low", "High")
+    )
+  )
+
+emotional_state_median
+
 [1] 2.05
 Show code
+study_data %>%
+  count(emotional_state_group) %>%
+  knitr::kable()
+
 emotional_state_group	n
 Low	56
 High	49
@@ -260,6 +497,46 @@ Check Scale Reliability
 Internal consistency was estimated for the affect intensity, memory confidence, and recognition confidence scales prior to being used for analysis.
 
 Show code
+# Create item-only data frames for each multi-item rating scale
+panas_item_df <- study_data %>% 
+  select(all_of(panas_items))
+
+confidence_item_df <- study_data %>% 
+  select(all_of(confidence_items))
+
+recognition_conf_item_df <- study_data %>% 
+  select(all_of(recognition_conf_items))
+
+# Compute internal consistency estimates
+panas_alpha <- psych::alpha(panas_item_df)
+panas_omega <- psych::omega(panas_item_df, plot = FALSE)
+
+confidence_alpha <- psych::alpha(confidence_item_df)
+confidence_omega <- psych::omega(confidence_item_df, plot = FALSE)
+
+recognition_conf_alpha <- psych::alpha(recognition_conf_item_df)
+recognition_conf_omega <- psych::omega(recognition_conf_item_df, plot = FALSE)
+
+# Print only alpha and omega coefficients
+tibble(
+  scale = c(
+    "Emotional State Intensity",
+    "Memory Confidence",
+    "Recognition Confidence"
+  ),
+  alpha = c(
+    panas_alpha$total$raw_alpha,
+    confidence_alpha$total$raw_alpha,
+    recognition_conf_alpha$total$raw_alpha
+  ),
+  omega = c(
+    panas_omega$omega.tot,
+    confidence_omega$omega.tot,
+    recognition_conf_omega$omega.tot
+  )
+) %>%
+  knitr::kable(col.names = c("Scale", "Cronbach's alpha", "McDonald's Omega"))
+
 Scale	Cronbach’s alpha	McDonald’s Omega
 Emotional State Intensity	0.8876551	0.9243495
 Memory Confidence	0.7363944	0.7606041
@@ -271,6 +548,17 @@ This section summarizes the scale scores and sample composition before analysis 
 
 Scale Score Descriptives
 Show code
+study_data %>%
+  select(
+    emotional_state_intensity,
+    memory_confidence,
+    recognition_confidence,
+    recognition_accuracy,
+    free_recall
+  ) %>%
+  psych::describe() %>%
+  knitr::kable(digits = 2)
+
 vars	n	mean	sd	median	trimmed	mad	min	max	range	skew	kurtosis	se
 emotional_state_intensity	1	105	2.06	0.60	2.05	2.03	0.59	1.05	4.00	2.95	0.52	0.03	0.06
 memory_confidence	2	105	62.63	17.09	64.33	63.16	16.80	22.00	100.00	78.00	-0.22	-0.48	1.67
@@ -281,10 +569,32 @@ The table shows descriptive statistics for the emotional affect, memory confiden
 
 Sample Composition by Age, Gender, and Injury
 Show code
+study_data %>%
+  summarise(
+    mean_age = mean(age, na.rm = TRUE),
+    sd_age = sd(age, na.rm = TRUE),
+    min_age = min(age, na.rm = TRUE),
+    max_age = max(age, na.rm = TRUE)
+  ) %>%
+  knitr::kable(
+    digits = 2,
+    col.names = c("Mean", "SD", "Minimum", "Maximum"),
+    caption = "Sample Age: Mean, Standard Deviation, and Range"
+  )
+
 Sample Age: Mean, Standard Deviation, and Range
 Mean	SD	Minimum	Maximum
 22.54	4.68	16	52
 Show code
+study_data %>%
+  count(gender) %>%
+  arrange(gender) %>%
+  mutate(percent = round(100 * n / sum(n), 1)) %>%
+  knitr::kable(
+    col.names = c("Gender", "n", "Percent"),
+    caption = "Sample Composition by Gender"
+  )
+
 Sample Composition by Gender
 Gender	n	Percent
 1	32	29.9
@@ -292,6 +602,15 @@ Gender	n	Percent
 3	1	0.9
 NA	2	1.9
 Show code
+study_data %>%
+  count(injury) %>%
+  arrange(injury) %>%
+  mutate(percent = round(100 * n / sum(n), 1)) %>%
+  knitr::kable(
+    col.names = c("Neurological Condition or Brain Injury", "n", "Percent"),
+    caption = "Sample Composition by Neurological Condition or Brain Injury"
+  )
+
 Sample Composition by Neurological Condition or Brain Injury
 Neurological Condition or Brain Injury	n	Percent
 1	4	3.7
@@ -304,6 +623,18 @@ Correlations Among the DVs
 This section examines correlations for the main continuous study variables.
 
 Show code
+# Correlations for the main continuous study variables
+psych::corr.test(
+  study_data %>% 
+    select(
+      emotional_state_intensity,
+      memory_confidence,
+      recognition_confidence,
+      recognition_accuracy,
+      free_recall
+    )
+)
+
 Call:psych::corr.test(x = study_data %>% select(emotional_state_intensity, 
     memory_confidence, recognition_confidence, recognition_accuracy, 
     free_recall))
@@ -375,6 +706,23 @@ Free Recall Model
 A 2x2 ANOVA tested whether free recall scores differed by mood condition, emotional affect group, and the mood condition x emotional affect group interaction.
 
 Show code
+# Create a participant ID variable for the ANOVA
+study_data <- study_data %>%
+  mutate(id = row_number())
+
+# 2x2 between-subjects ANOVA predicting free recall scores
+# DV: free_recall
+# Factors: music_cond and emotional_state_group
+a1_free_recall <- afex::aov_ez(
+  id = "id",
+  dv = "free_recall",
+  between = c("music_cond", "emotional_state_group"),
+  data = study_data
+)
+
+# Print the ANOVA table
+a1_free_recall
+
 Anova Table (Type 3 tests)
 
 Response: free_recall
@@ -388,6 +736,8 @@ The ANOVA table above reports the main effect of mood condition, the main effect
 
 Estimated Means for Free Recall
 Show code
+emmeans(a1_free_recall, ~ music_cond)
+
  music_cond         emmean    SE  df lower.CL upper.CL
  Negative Condition   12.7 0.412 101     11.9     13.5
  Positive Condition   12.4 0.367 101     11.7     13.1
@@ -395,6 +745,8 @@ Show code
 Results are averaged over the levels of: emotional_state_group 
 Confidence level used: 0.95 
 Show code
+emmeans(a1_free_recall, ~ emotional_state_group)
+
  emotional_state_group emmean   SE  df lower.CL upper.CL
  Low                     12.3 0.38 101     11.6     13.1
  High                    12.8 0.40 101     12.0     13.6
@@ -402,6 +754,8 @@ Show code
 Results are averaged over the levels of: music_cond 
 Confidence level used: 0.95 
 Show code
+emmeans(a1_free_recall, ~ music_cond * emotional_state_group)
+
  music_cond         emotional_state_group emmean    SE  df lower.CL upper.CL
  Negative Condition Low                     12.6 0.583 101     11.5     13.8
  Positive Condition Low                     12.1 0.487 101     11.1     13.1
@@ -415,6 +769,19 @@ Recognition Accuracy Model
 The second 2x2 ANOVA tested whether recognition accuracy scores differed by mood condition, emotional affect group, and the mood condition x emotional affect group interaction.
 
 Show code
+# 2x2 between-subjects ANOVA predicting recognition accuracy
+# DV: recognition_accuracy
+# Factors: music_cond and emotional_state_group
+a2_recognition_accuracy <- afex::aov_ez(
+  id = "id",
+  dv = "recognition_accuracy",
+  between = c("music_cond", "emotional_state_group"),
+  data = study_data
+)
+
+# Print the ANOVA table
+a2_recognition_accuracy
+
 Anova Table (Type 3 tests)
 
 Response: recognition_accuracy
@@ -428,6 +795,8 @@ The ANOVA table above reports the main effect of mood condition, the main effect
 
 Estimated Means for Recognition
 Show code
+emmeans(a2_recognition_accuracy, ~ music_cond)
+
  music_cond         emmean     SE  df lower.CL upper.CL
  Negative Condition  0.118 0.0164 101   0.0852    0.150
  Positive Condition  0.118 0.0146 101   0.0887    0.147
@@ -435,6 +804,8 @@ Show code
 Results are averaged over the levels of: emotional_state_group 
 Confidence level used: 0.95 
 Show code
+emmeans(a2_recognition_accuracy, ~ emotional_state_group)
+
  emotional_state_group emmean     SE  df lower.CL upper.CL
  Low                    0.128 0.0151 101   0.0984    0.158
  High                   0.107 0.0159 101   0.0754    0.139
@@ -442,6 +813,8 @@ Show code
 Results are averaged over the levels of: music_cond 
 Confidence level used: 0.95 
 Show code
+emmeans(a2_recognition_accuracy, ~ music_cond * emotional_state_group)
+
  music_cond         emotional_state_group emmean     SE  df lower.CL upper.CL
  Negative Condition Low                    0.130 0.0232 101   0.0844    0.176
  Positive Condition Low                    0.126 0.0194 101   0.0879    0.165
@@ -455,6 +828,19 @@ Memory Confidence ANOVA
 The third 2x2 ANOVA tested whether memory confidence scores differed by mood condition, emotional affect group, and the mood condition x emotional affect group interaction.
 
 Show code
+# 2x2 between-subjects ANOVA predicting memory confidence
+# DV: memory_confidence
+# Factors: music_cond and emotional_state_group
+a3_memory_confidence <- afex::aov_ez(
+  id = "id",
+  dv = "memory_confidence",
+  between = c("music_cond", "emotional_state_group"),
+  data = study_data
+)
+
+# Print the ANOVA table
+a3_memory_confidence
+
 Anova Table (Type 3 tests)
 
 Response: memory_confidence
@@ -468,6 +854,8 @@ The ANOVA table above reports the effect of mood condition, the effect of emotio
 
 Estimated Means for Memory Confidence
 Show code
+emmeans(a3_memory_confidence, ~ music_cond)
+
  music_cond         emmean   SE  df lower.CL upper.CL
  Negative Condition   65.8 2.50 101     60.8     70.7
  Positive Condition   60.1 2.23 101     55.7     64.5
@@ -475,6 +863,8 @@ Show code
 Results are averaged over the levels of: emotional_state_group 
 Confidence level used: 0.95 
 Show code
+emmeans(a3_memory_confidence, ~ emotional_state_group)
+
  emotional_state_group emmean   SE  df lower.CL upper.CL
  Low                     61.7 2.31 101     57.1     66.3
  High                    64.2 2.43 101     59.4     69.0
@@ -482,6 +872,8 @@ Show code
 Results are averaged over the levels of: music_cond 
 Confidence level used: 0.95 
 Show code
+emmeans(a3_memory_confidence, ~ music_cond * emotional_state_group)
+
  music_cond         emotional_state_group emmean   SE  df lower.CL upper.CL
  Negative Condition Low                     62.8 3.54 101     55.8     69.9
  Positive Condition Low                     60.5 2.96 101     54.7     66.4
@@ -495,6 +887,19 @@ Recognition Confidence ANOVA
 The last 2x2 ANOVA tested whether recognition confidence scores differed by mood condition, emotional affect group, and the mood condition x emotional affect group interaction.
 
 Show code
+# 2x2 between-subjects ANOVA predicting recognition confidence
+# DV: recognition_confidence
+# Factors: music_cond and emotional_state_group
+a4_recognition_confidence <- afex::aov_ez(
+  id = "id",
+  dv = "recognition_confidence",
+  between = c("music_cond", "emotional_state_group"),
+  data = study_data
+)
+
+# Print the ANOVA table
+a4_recognition_confidence
+
 Anova Table (Type 3 tests)
 
 Response: recognition_confidence
@@ -508,6 +913,8 @@ The ANOVA table above reports the effect of mood condition, the effect of emotio
 
 Estimated Means for Recognition Confidence
 Show code
+emmeans(a4_recognition_confidence, ~ music_cond)
+
  music_cond         emmean     SE  df lower.CL upper.CL
  Negative Condition   1.84 0.0267 101     1.79     1.90
  Positive Condition   1.83 0.0238 101     1.79     1.88
@@ -515,6 +922,8 @@ Show code
 Results are averaged over the levels of: emotional_state_group 
 Confidence level used: 0.95 
 Show code
+emmeans(a4_recognition_confidence, ~ emotional_state_group)
+
  emotional_state_group emmean     SE  df lower.CL upper.CL
  Low                     1.81 0.0246 101     1.76     1.86
  High                    1.87 0.0259 101     1.82     1.92
@@ -522,6 +931,8 @@ Show code
 Results are averaged over the levels of: music_cond 
 Confidence level used: 0.95 
 Show code
+emmeans(a4_recognition_confidence, ~ music_cond * emotional_state_group)
+
  music_cond         emotional_state_group emmean     SE  df lower.CL upper.CL
  Negative Condition Low                     1.81 0.0378 101     1.74     1.89
  Positive Condition Low                     1.80 0.0316 101     1.74     1.87
@@ -542,24 +953,194 @@ The figure shows mean free recall scores by music condition and emotional affect
 
 Recognition Accuracy Interaction Plot
 Show code
+p_recognition_accuracy_bar <- ggplot(
+  as.data.frame(emmeans(a2_recognition_accuracy, ~ music_cond * emotional_state_group)),
+  aes(
+    x = music_cond,
+    y = emmean,
+    fill = emotional_state_group
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.65),
+    width = 0.55,
+    color = "white"
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = lower.CL,
+      ymax = upper.CL
+    ),
+    position = position_dodge(width = 0.65),
+    width = 0.12,
+    linewidth = 0.7
+  ) +
+  labs(
+    x = "Music Condition",
+    y = "Mean Recognition Accuracy",
+    fill = "Emotional Affect Group"
+  ) +
+  scale_x_discrete(labels = c("Negative", "Positive")) +
+  scale_fill_manual(
+    values = c(
+      "Low" = "#E76F51",
+      "High" = "#2A9D8F"
+    )
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, 1, 0.1)
+  ) +
+  coord_cartesian(
+    ylim = c(0, 1)
+  ) +
+  theme_classic(
+    base_size = 14
+  )
+
+p_recognition_accuracy_bar
+
 
 
 The figure shows mean recognition accuracy scores by music condition and emotional affect group, with error bars representing 95% confidence intervals.
 
 Memory Confidence Interaction Plot
 Show code
+p_memory_confidence_bar <- ggplot(
+  as.data.frame(emmeans(a3_memory_confidence, ~ music_cond * emotional_state_group)),
+  aes(
+    x = music_cond,
+    y = emmean,
+    fill = emotional_state_group
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.65),
+    width = 0.55,
+    color = "white"
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = lower.CL,
+      ymax = upper.CL
+    ),
+    position = position_dodge(width = 0.65),
+    width = 0.12,
+    linewidth = 0.7
+  ) +
+  labs(
+    x = "Music Condition",
+    y = "Mean Memory Confidence",
+    fill = "Emotional Affect Group"
+  ) +
+  scale_x_discrete(labels = c("Negative", "Positive")) +
+  scale_fill_manual(
+    values = c(
+      "Low" = "#E76F51",
+      "High" = "#2A9D8F"
+    )
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, 100, 10)
+  ) +
+  coord_cartesian(
+    ylim = c(0, 100)
+  ) +
+  theme_classic(
+    base_size = 14
+  )
+
+p_memory_confidence_bar
+
 
 
 The figure shows mean memory confidence scores by music condition and emotional affect group, with error bars representing 95% confidence intervals.
 
 Recognition Confidence Interaction Plot
 Show code
+p_recognition_confidence_bar <- ggplot(
+  as.data.frame(emmeans(a4_recognition_confidence, ~ music_cond * emotional_state_group)),
+  aes(
+    x = music_cond,
+    y = emmean,
+    fill = emotional_state_group
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.65),
+    width = 0.55,
+    color = "white"
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = lower.CL,
+      ymax = upper.CL
+    ),
+    position = position_dodge(width = 0.65),
+    width = 0.12,
+    linewidth = 0.7
+  ) +
+  labs(
+    x = "Music Condition",
+    y = "Mean Recognition Confidence",
+    fill = "Emotional Affect Group"
+  ) +
+  scale_x_discrete(labels = c("Negative", "Positive")) +
+  scale_fill_manual(
+    values = c(
+      "Low" = "#E76F51",
+      "High" = "#2A9D8F"
+    )
+  ) +
+  scale_y_continuous(
+    breaks = seq(1, 5, 1)
+  ) +
+  coord_cartesian(
+    ylim = c(1, 5)
+  ) +
+  theme_classic(
+    base_size = 14
+  )
+
+p_recognition_confidence_bar
+
 
 
 The figure shows mean recognition confidence scores by music condition and emotional affect group, with error bars representing 95% confidence intervals.
 
 Export Figures
 Show code
+if (!dir.exists("figures")) {
+  dir.create("figures")
+}
+
+ggsave(
+  filename = "figures/free_recall_interaction_plot.svg",
+  plot = p_free_recall_bar,
+  width = 7,
+  height = 5
+)
+
+ggsave(
+  filename = "figures/recognition_accuracy_interaction_plot.svg",
+  plot = p_recognition_accuracy_bar,
+  width = 7,
+  height = 5
+)
+
+ggsave(
+  filename = "figures/memory_confidence_interaction_plot.svg",
+  plot = p_memory_confidence_bar,
+  width = 7,
+  height = 5
+)
+
+ggsave(
+  filename = "figures/recognition_confidence_interaction_plot.svg",
+  plot = p_recognition_confidence_bar,
+  width = 7,
+  height = 5
+)
+
 The created figures were exported to the figures/ folder to be kept for further use in manuscript, poster, or repository materials concerning this study.
 
 Results Summary
@@ -571,6 +1152,8 @@ Reproducibility Information
 This section contains the version of R, operating system, and the package versions used to provide this report, with the inclusion of this information aiming to help others easily identify the software used to portray the analyses provided.
 
 Show code
+sessionInfo()
+
 R version 4.6.0 (2026-04-24)
 Platform: aarch64-apple-darwin23
 Running under: macOS Sonoma 14.8.3
@@ -617,4 +1200,4 @@ loaded via a namespace (and not attached):
 [58] Rcpp_1.1.1-1.1       glue_1.8.1           svglite_2.2.2       
 [61] vroom_1.7.1          rstudioapi_0.18.0    minqa_1.2.8         
 [64] jsonlite_2.0.0       R6_2.6.1             plyr_1.8.9          
-[67] systemfonts_1.3.2   
+[67] systemfonts_1.3.2  
